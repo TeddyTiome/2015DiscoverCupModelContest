@@ -1,0 +1,13 @@
+load("/Users/Tii/Desktop/2015DiscoverCupModelContest/DCMC0928.RData")
+ls
+attach(daytime)
+daytime
+names(daytime)[2:335]<-as.character(chron(as.numeric(names(daytime)[2:335])))#
+daytime.weekday<-names(daytime)[2:335]#
+#
+for (i in 14:335){#
+  daytime.ts.all<-c(daytime.ts.all,daytime[,i])#
+}#
+#all interval time series#
+#
+plot(daytime.ts.all,type="l")

@@ -1,0 +1,169 @@
+---
+title: "2015 Discover Cup Model Contest"
+author: "Hao YU"
+date: "September 30, 2015"
+output: html_document
+---
+
+
+```{r}
+#***Data Processing***#
+
+data<-read.table("~/Desktop/data.txt",sep="|",header=T)
+data.od <- read.csv("~/Desktop/data.od.csv")
+data.vt <- read.csv("~/Desktop/data.vt.csv")
+
+data.vt$Date<-as.Date(data.vt$Date,"%m/%d/%Y")
+data$Call_date<-as.Date(data$Call_date,"%Y-%m-%d")
+
+summary(lm(data.vt$Call.Volume~data.vt$Handling_time))
+#linear relationship
+
+plot(data.vt$Date,data.vt$Call.Volume)
+#periodical time series
+
+```
+
+```{r}
+#***Question 1***#
+
+Vol=c()
+dat= as.Date(10592:10925,origin="1970-01-01")
+dat<-as.data.frame.Date(dat)
+
+for (i in 10592:10925){
+  Vol[i-10591]=nrow(subset(data,data$Call_date==i))}
+
+callvol<-cbind(dat,Vol)     
+#the daily call volume data
+
+callvol[,3]<-weekdays(callvol$dat)
+#add week days
+
+callvol[1:31,4]<-c("Jan")
+callvol[32:59,4]<-c("Feb")
+callvol[60:90,4]<-c("Mar")
+callvol[91:120,4]<-c("Apr")
+callvol[121:151,4]<-c("May")
+callvol[152:181,4]<-c("Jun")
+callvol[182:212,4]<-c("Jul")
+callvol[213:243,4]<-c("Aug")
+callvol[244:273,4]<-c("Sep")
+callvol[274:304,4]<-c("Oct")
+callvol[305:334,4]<-c("Nov")
+#add month
+
+names(callvol)<-c("date","vol","day","month")
+
+summary(aov(callvol$vol~callvol$day))
+#ANOVA for week days
+
+library(astsa)
+library(forecast)
+
+#ARIMA model
+acf(diff(callvol$vol[13:334],differences = 1),lag.max = 50)
+pacf(diff(callvol$vol[13:334],differences = 1),lag.max = 50)
+#acf and pacf show that p=7, d=1, q=2
+vol.fit<-arima(callvol$vol[13:334],order=c(7,1,2),seasonal=list(order=c(1,1,0), period=7))
+AIC(vol.fit)
+#AIC values as lowest
+pre.vol<-forecast.Arima(vol.fit,h=31,level=c(99.5))
+plot.forecast(pre.vol)
+
+tsdiag(vol.fit)
+#p values show that all white noise
+
+pre.vol
+```
+
+```{r}
+#***Question 2***#
+
+library(chron)
+
+#for (a in 10592:10925){
+#  data.sub<-subset(data,data$Call_date==a)
+#  one.day<-chron(times=data.sub$IVR_entry)
+#  for (b in 1:length(one.day))
+#    for (c in 1:48) {
+#      if (daytime[c,1] <= one.day[b] & daytime[c+1,1] > one.day[b] & is.na(daytime[c,1] <= one.day[b] & daytime[c+1,1] > one.day[b]) == FALSE)
+#        daytime[c,a-10590] <- daytime[c,a-10590] + 1
+#    }
+#  daytime[48,a-10590]<-length(one.day)-sum(daytime[,a-10590])
+#}
+#consume too much time so directly load from local file
+#divide volumes into each time period on each day
+
+daytime <- read.csv("~/Desktop/daytime.csv")
+
+names(daytime)[2:335]<-as.character(chron(as.numeric(names(daytime)[2:335])))
+daytime.weekday<-names(daytime)[2:335]
+
+daytime.ts.all<-c()
+
+for (i in 14:335){
+  daytime.ts.all<-c(daytime.ts.all,daytime[,i])
+}
+#all interval time series
+
+plot(daytime.ts.all,type="l")
+
+daytime.wd<-daytime
+daytime.wd[49,2:335]<-weekdays(10592:10925)
+
+#ARIMA model loop
+forecast.time<-matrix(nrow = 48,ncol = 31)
+forecast.time[1:48,1:31]<-0
+for (i in 1:48){
+  time.fit<-arima(as.numeric(daytime.wd[i,14:335]),order=c(7,1,1),seasonal=list(order=c(1,1,0), period=7))
+  forecast.time.fit<-(forecast.Arima(time.fit,h=31))
+  forecast.time[i,1:31]<-forecast.time.fit$mean[1:31]}
+
+AIC(time.fit)
+tsdiag(time.fit)
+
+forecast.time.round<-round(forecast.time)
+
+for (i in 1:48){
+  for (j in 1:31){
+    if (forecast.time.round[i,j]<0){
+      forecast.time.round[i,j]=0}}}
+
+#point 0 to all negative values
+forecast.time.round
+
+forecast.time.round[20,1:31]
+#call volumes on 09:30:00 from 1999-12-01 to 1999-12-31
+
+
+forecast.time.round[1:48,15]
+#call volumes from 00:00:00 to 23:30:00 on 1999-12-15
+```
+
+```{r}
+#***Question 3***#
+
+data.agent<-subset(data,as.character(data$outcome)=="AGENT  ")
+#subtract the data with server.
+
+ser.time=c()
+for (i in 10592:10925){
+  ser.time[i-10591]=sum(subset(data.agent,data.agent$Call_date==i)[,16])}
+
+handlt<-cbind(dat,ser.time)
+
+#ARIMA model
+acf(diff(handlt$ser.time,differences = 1),lag.max = 50)
+pacf(diff(handlt$ser.time,differences = 1),lag.max = 50)
+
+ht.fit<-arima(handlt$ser.time,order=c(7,1,2),seasonal=list(order=c(1,1,0), period=7))
+pre.ht<-predict(ht.fit,n.ahead=31)
+forecast.ht.fit<-(forecast.Arima(ht.fit,h=31))
+plot.forecast(forecast.ht.fit)
+
+AIC(ht.fit)
+tsdiag(ht.fit)
+
+```
+
